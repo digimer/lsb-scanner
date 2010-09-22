@@ -1,0 +1,85 @@
+=pod
+
+=encoding utf8
+ 
+=head1 NAME
+
+B<lsb-scanner>
+
+=head1 SYNOPSIS
+
+B<lsb-scanner -m [pre|post] -p E<lt>programE<gt>>
+
+=head1 DESCRIPTION
+
+In C<pre> mode, reads in the LSB header information from the head of an init
+script and records it in C</etc/sysconfig/lsb_scanner.E<lt>programE<gt>.conf>.
+	
+In C<post> mode, it reads in the LSB header information from the 
+C</etc/sysconfig/lsb_scanner.E<lt>programE<gt>.conf> file, if it exists. It 
+then reads in the existing C</etc/init.d/E<lt>programE<gt>> and compares the 
+LSB header. For each line in the init script, it checks for a differing value
+in the config file. If one or more differences are found, the init script will
+be written back out with the new values.
+
+When needed, the init script's C<mode> will be set to 'read-write' by the
+C<root> user. The original mode will be restored before exit.
+
+=head1 SWITCHES
+
+=head2 C<-m>, C<--mode>
+
+This sets the mode. It must be C<pre> or C<post>.
+
+=head3
+
+C<pre> sets the mode to "Pre-Scan" mode. The existing E<lt>programE<gt> init
+script will be examined and it's values recorded in the lsb config file. Any
+existing values in the config file will be overwritten.
+
+C<post> set the mode to "Post-Write" mode. The config file will be read and
+compared against the existing init script. If differences are found, the init
+script will be re-written if changes are made.
+
+=head2 C<-p>, C<--program>
+
+This sets the name of the program being worked on. It must match the name of
+the init script. If the init script is not found, the program will exit.
+
+=head1 EXAMPLES
+
+C<lsb_scanner -m pre -p clvmd>
+
+Read in the C</etc/init.d/clvmd> LSB information and store it in
+C</etc/sysconfig/lsb_scanner.clvmd.conf>.
+
+B<lsb_scanner -m post -p clvmd>
+
+Read in C</etc/sysconfig/lsb_scanner.clvmd.conf> and update the LSB header in 
+C</etc/init.d/clvmd> if necessary.
+
+=head1 LOGS
+
+The log file C</tmp/lsb_scanner.log> is created or appended to.
+
+=head1 BUGS
+
+None known, many expected. Send bugs to L<digimer@alteeve.com>.
+
+=head1 SEE ALSO
+
+L<http://github.com/digimer/lsb-scanner>
+
+L<http://fedoraproject.org/wiki/Packaging/SysVInitScript>
+
+L<http://refspecs.freestandards.org/LSB_4.0.0/LSB-Core-generic/LSB-Core-generic/iniscrptact.html>
+
+L<http://wiki.alteeve.com/index.php/lsb-scanner>
+
+=head1 LICENSE
+ 
+ Copyright (c) 2010 Alteeve's Niche!. All rights reserved.
+
+This program is free software; you can redistribute it and/or modify it under the terms of the GPL v2 or higher.
+
+=cut
