@@ -24,6 +24,7 @@
 # Author:  Madison Kelly (mkelly@alteeve.com)
 # Date:    Sep. 21, 2010
 # License: GPL v2+
+# Version: 0.1
 # 
 
 # Play safe!
@@ -37,12 +38,11 @@ my $conf={
 	set_next	=>	"",
 	'log'		=>	"/tmp/lsb_scanner.log",
 	debug		=>	0,
+	quiet		=>	0,
 	mode		=>	"",
 	program		=>	"",
-	src	=>	".",
-	dst	=>	".",
-# 	src	=>	"/etc/init.d",
-# 	dst	=>	"/etc/sysconfig",
+	init_file	=>	"/etc/init.d",
+	lsb_conf	=>	"/etc/sysconfig",
 	from_conf	=>	{
 		'chkconfig'		=>	undef,
 		'Provides'		=>	undef,
@@ -93,19 +93,26 @@ elsif (not $conf->{program})
 # Replace some place holders.
 my $program=$conf->{program};
 $conf->{'log'}=~s/#!prog_name!#/$program/;
-$conf->{src}.="/$program";
-$conf->{dst}.="/lsb_scanner.$program.conf";
-record ($conf, $log, __LINE__, "Log: [$conf->{'log'}], src: [$conf->{src}], dst: [$conf->{dst}]\n") if $conf->{debug};
+$conf->{init_file}.="/$program";
+$conf->{lsb_conf}.="/lsb_scanner.$program.conf";
+record($conf, $log, __LINE__, "Log: [$conf->{'log'}], init_file: [$conf->{init_file}], lsb_conf: [$conf->{lsb_conf}]\n") if $conf->{debug};
 
 # Start work.
 if ($conf->{mode} eq "pre")
 {
 	# Read in the init script.
 	read_init_lsb($conf, $log);
+	# Write out what I read to the LSB config file.
 	write_lsb_conf($conf, $log);
 }
 elsif ($conf->{mode} eq "post")
 {
+	# Read in the config file, if it exists.
+	if (read_lsb_conf($conf, $log))
+	{
+		# read_lsb_conf() returns >0 on success.
+		write_init_lsb($conf, $log);
+	}
 }
 else
 {
@@ -117,11 +124,179 @@ else
 # read_conf($conf, $log);
 
 
-do_exit($conf, $log, 1);
+do_exit($conf, $log, 0);
 
 ###############################################################################
 # Functions                                                                   #
 ###############################################################################
+
+# This re-writes the init script if changes are needed.
+sub write_init_lsb
+{
+	my ($conf, $log)=@_;
+	
+	# This gets set to '1' if anything changes.
+	my $save = 0;
+	
+	# Check that I can read the init script. Die if not, as the program
+	# should have been installed by the time this runs in post-write mode.
+	record($conf, $log, __LINE__, "The init script: [$conf->{init_file}] doesn't seem to exist.\n", 2) if not -f $conf->{init_file};
+	
+	# Now the fun part; If I don't have write access, record the current
+	# mode so that it can be restored later.
+	my $old_mode_o=(stat($conf->{init_file}))[2];
+	my $old_mode_a=sprintf "%04o", $old_mode_o & 07777;
+	record($conf, $log, __LINE__, "Mode of: [$conf->{init_file}] is: [$old_mode_a] ($old_mode_o)\n") if $conf->{debug};
+	
+	# Now check to see if I need to change and later reset the mode.
+	my $reset_mode = 0;
+	if (not -l $conf->{init_file})
+	{
+		$reset_mode = 1;
+		record($conf, $log, __LINE__, "Unable to write to: [$conf->{init_file}], I will change the mode.\n", 1);
+		chmod 0755, $conf->{init_file};
+	}
+	
+	# Now read in the source init script and see if there are any headers
+	# to change.
+	my @new;
+	my @orig;
+	my $done_processing = 0;
+	my $read=IO::Handle->new();
+	my $shell_call="$conf->{init_file}";
+	open ($read, "<$shell_call") or record($conf, $log, __LINE__, "Failed to read: [$shell_call], error was: $!\n", 2);
+	record($conf, $log, __LINE__, "Shell call: [$shell_call]\n") if $conf->{debug};
+	while (<$read>)
+	{
+		my $line=$_;
+		
+		# This will be written out as then backup, so I record it
+		# straight away. I could do a system call or use File::Copy
+		# but that's going outside the program or one more dependency.
+		push @orig, $line;
+		
+		# If it's not a comment, or if I've seen the end of the LSB
+		# header, just record the line and loop.
+		if (($done_processing) || ($line !~ /#/))
+		{
+			push @new, $line;
+			next;
+		}
+		
+		# Parse comments.
+		if ($line =~ /^#/)
+		{
+			# Record that I am done when I see the '### END INIT INFO' line.
+			if ($line =~ /^### END INIT INFO/)
+			{
+				$done_processing = 1;
+			}
+			elsif ($line =~ /:/)
+			{
+				my ($var, $old_val)=($line=~/#\s+(.*?):\s+(.*)/);
+				$old_val=~s/\s+$//;
+				foreach my $key (keys %{$conf->{from_conf}})
+				{
+					# If the hash key matches the variable,
+					# and if the variable exists in the
+					# hash, store the value.
+					if (($key eq $var) && (exists $conf->{from_conf}{$key}))
+					{
+						record($conf, $log, __LINE__, "Checking old_val: [$old_val] against stored val: [$conf->{from_conf}{$key}]\n") if $conf->{debug};
+						if ($old_val ne $conf->{from_conf}{$key})
+						{
+							chomp $line;
+							my $old=$old_val;
+							my $new=$conf->{from_conf}{$key};
+							record($conf, $log, __LINE__, " - Different!\n") if $conf->{debug};
+							record($conf, $log, __LINE__, " - old: [$line]\n") if $conf->{debug};
+							$save = 1;
+							$line =~ s/#(\s+)(.*?):(\s+)(.*)/#$1$2:$3$new/;
+							record($conf, $log, __LINE__, " - new: [$line]\n") if $conf->{debug};
+							$line.="\n";
+						}
+					}
+				}
+			}
+			
+			push @new, $line;
+		}
+	}
+	$read->close();
+	
+	# Write the changes, if needed.
+	if ($save)
+	{
+		# It's needed. Save a backup first.
+		my $backup=$conf->{lsb_conf};
+		$backup=~s/.conf$/.init.backup./;
+		$backup.=time;
+		
+		my $bk=IO::Handle->new();
+		open ($bk, ">$backup") or die "Failed to open: [$backup] for writing; Error: $!\n";
+		foreach my $line (@orig)
+		{
+			print $bk $line;
+		}
+		$bk->close();
+		
+		# Now write out the modified copy.
+		my $init=IO::Handle->new();
+		open ($init, ">$conf->{init_file}") or die "Failed to open: [$conf->{init_file}] for writing; Error: $!\n";
+		foreach my $line (@new)
+		{
+			print $init $line;
+		}
+		$init->close();
+	}
+	
+	# Restore the original permissions, if needed.
+	if ($reset_mode)
+	{
+		record($conf, $log, __LINE__, "Restoring original mode of: [$conf->{init_file}] to: [$old_mode_a].\n", 1);
+		chmod $old_mode_o, $conf->{init_file};
+	}
+	
+	return 0;
+}
+
+# Read in the LSB config file.
+sub read_lsb_conf
+{
+	my ($conf, $log)=@_;
+	
+	# It's not an error to not have an LSB config file.
+	return 0 if not -f $conf->{lsb_conf};
+	
+	# Parse and record.
+	my $read=IO::Handle->new();
+	my $shell_call="$conf->{lsb_conf}";
+	open ($read, "<$shell_call") or record($conf, $log, __LINE__, "Failed to read: [$shell_call], error was: $!\n", 2);
+	record($conf, $log, __LINE__, "Shell call: [$shell_call]\n") if $conf->{debug};
+	while (<$read>)
+	{
+		chomp;
+		my $line=$_;
+		next if not $line;
+		next if $line !~ /:/;
+		$line=~s/^\s+//;
+		$line=~s/\s+$//;
+		next if $line =~ /^#/;
+		next if not $line;
+		my ($var, $val)=(split/: /, $line, 2);
+		$val="" if not defined $val;
+		$var=~s/^\s+//;
+		$var=~s/\s+$//;
+		$val=~s/^\s+//;
+		$val=~s/\s+$//;
+		next if (not $var);
+		$conf->{from_conf}{$var}=$val;
+		record($conf, $log, __LINE__, "from_conf::$var: [$conf->{from_conf}{$var}]\n") if $conf->{debug};
+	}
+	$read->close();
+	
+	return (1);
+}
 
 # This writes out configuration files that were set in the read_init_lsb().
 sub write_lsb_conf
@@ -129,7 +304,7 @@ sub write_lsb_conf
 	my ($conf, $log)=@_;
 	
 	my $lsb=IO::Handle->new();
-	open ($lsb, ">$conf->{dst}") or die "Failed to open: [$conf->{dst}] for writing; Error: $!\n";
+	open ($lsb, ">$conf->{lsb_conf}") or die "Failed to open: [$conf->{lsb_conf}] for writing; Error: $!\n";
 	
 	foreach my $key (sort {$a cmp $b} keys %{$conf->{from_conf}})
 	{
@@ -145,17 +320,17 @@ sub read_init_lsb
 {
 	my ($conf, $log)=@_;
 	
-	if (not -f $conf->{src})
+	if (not -f $conf->{init_file})
 	{
-		record($conf, $log, "Unable to find the source file: [$conf->{src}].\n", 2);
+		record($conf, $log, "Unable to find the source file: [$conf->{init_file}].\n", 2);
 	}
-	elsif (not -r $conf->{src})
+	elsif (not -r $conf->{init_file})
 	{
-		record($conf, $log, "Unable to read the source file: [$conf->{src}], error was: $!\n", 2);
+		record($conf, $log, "Unable to read the source file: [$conf->{init_file}], error was: $!\n", 2);
 	}
 	
 	my $read=IO::Handle->new();
-	my $shell_call="$conf->{src}";
+	my $shell_call="$conf->{init_file}";
 	open ($read, "<$shell_call") or record($conf, $log, __LINE__, "Failed to read: [$shell_call], error was: $!\n", 2);
 	record($conf, $log, __LINE__, "Shell call: [$shell_call]\n") if $conf->{debug};
 	while (<$read>)
@@ -167,12 +342,9 @@ sub read_init_lsb
 		# line.
 		next if $line !~ /^#/;
 		last if $line =~ /^### END INIT INFO/;
-		# This regex doesn't work in some cases...
-# 		my ($var, $val)=($line=~/^#\s+(\w+\-??\w{0,}): (.*)/);
-		my ($var, $val)=split /:/, $line, 2;
-		$var=~s/^#\s+//;
+		my ($var, $val)=($line=~/#\s+(.*?):\s+(.*)/);
+		$val="" if not defined $val;
 		next if not $var;
-		next if not $val;
 		$val=~s/^\s+//;
 		$val=~s/\s+$//;
 		foreach my $key (keys %{$conf->{from_conf}})
@@ -182,7 +354,7 @@ sub read_init_lsb
 			if (($key eq $var) && (exists $conf->{from_conf}{$key}))
 			{
 				$conf->{from_conf}{$key}=$val;
-				record ($conf, $log, __LINE__, "Set 'conf_file::$key' to: [$conf->{from_conf}{$key}]\n") if $conf->{debug};
+				record($conf, $log, __LINE__, "Set 'conf_file::$key' to: [$conf->{from_conf}{$key}]\n") if $conf->{debug};
 				last;
 			}
 		}
@@ -237,6 +409,16 @@ sub read_cla
 			# Turn off debugging output.
 			$conf->{debug}=0;
 		}
+		elsif (($arg=~/-q/) || ($arg=~/--quiet/))
+		{
+			# Silence all non-fatal errors.
+			$conf->{quiet}=1;
+		}
+		elsif (($arg=~/-Q/) || ($arg=~/--not-quiet/))
+		{
+			# Display informative message.
+			$conf->{quiet}=0;
+		}
 		elsif (($arg=~/-m/) || ($arg=~/--mode/))
 		{
 			# mode, must be 'pre' or 'post'
@@ -284,45 +466,6 @@ sub read_cla
 	return ($bad);
 }
 
-# Read in the config file.
-sub read_conf
-{
-	my ($conf, $log)=@_;
-	$conf={} if not $conf;
-	
-	# I can't call the 'record' method here because I've not read in the
-	# log file and thus don't know where to write the log to yet. Comment
-	# out or delete 'print' statements before release.
-	my $read=IO::Handle->new();
-	my $shell_call="$conf->{conf_file}";
-	open ($read, "<$shell_call") or record($conf, $log, __LINE__, "Failed to read: [$shell_call], error was: $!\n", 2);
-	# To see this log message, debug will need to be set true in the
-	# initialization hash.
-	record($conf, $log, __LINE__, "Shell call: [$shell_call]\n") if $conf->{debug};
-	while (<$read>)
-	{
-		chomp;
-		my $line=$_;
-		next if not $line;
-		next if $line !~ /=/;
-		$line=~s/^\s+//;
-		$line=~s/\s+$//;
-		next if $line =~ /^#/;
-		next if not $line;
-		my ($var, $val)=(split/=/, $line, 2);
-		$var=~s/^\s+//;
-		$var=~s/\s+$//;
-		$val=~s/^\s+//;
-		$val=~s/\s+$//;
-		next if (not $var);
-		record($conf, $log, __LINE__, "Storing: [$var] = [$val]\n") if $conf->{debug};
-		$conf->{from_conf}{$var}={$val};
-	}
-	$read->close();
-	
-	return (0);
-}
-
 # This cleanly exits the agent.
 sub do_exit
 {
@@ -339,7 +482,6 @@ sub do_exit
 sub record
 {
 	my ($conf, $log, $line, $msg, $critical)=@_;
-# 	print "line: [$line]\n";
 	$critical=0 if not $critical;
 	
 	# The log file gets everything.

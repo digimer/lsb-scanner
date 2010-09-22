@@ -19,8 +19,10 @@ In C<post> mode, it reads in the LSB header information from the
 C</etc/sysconfig/lsb_scanner.E<lt>programE<gt>.conf> file, if it exists. It 
 then reads in the existing C</etc/init.d/E<lt>programE<gt>> and compares the 
 LSB header. For each line in the init script, it checks for a differing value
-in the config file. If one or more differences are found, the init script will
-be written back out with the new values.
+in the config file. If one or more differences are found, the original init
+script will be backed up as
+C</etc/sysconfig/lsb_scanner.E<lt>programE<gt>.init.backup.E<lt>timestampE<gt>>,
+and then the modified init script will be written out with the new values.
 
 When needed, the init script's C<mode> will be set to 'read-write' by the
 C<root> user. The original mode will be restored before exit.
@@ -31,13 +33,15 @@ C<root> user. The original mode will be restored before exit.
 
 This sets the mode. It must be C<pre> or C<post>.
 
-=head3
+=head3 C<pre>
 
-C<pre> sets the mode to "Pre-Scan" mode. The existing E<lt>programE<gt> init
+This sets the mode to "Pre-Scan" mode. The existing E<lt>programE<gt> init
 script will be examined and it's values recorded in the lsb config file. Any
 existing values in the config file will be overwritten.
 
-C<post> set the mode to "Post-Write" mode. The config file will be read and
+=head3 C<post>
+
+This set the mode to "Post-Write" mode. The config file will be read and
 compared against the existing init script. If differences are found, the init
 script will be re-written if changes are made.
 

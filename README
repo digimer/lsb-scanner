@@ -18,6 +18,9 @@ In Post-Write mode:
 - The read value will be compared against the stored value, if any. If there
   is a difference, the LSB line will be updated to match the stored value.
 - The modified init script will be re-written *only* if a value was changed.
+- If a change is made, the original copy of the init script will be backed up
+  to '/etc/sysconfig/lsb_scanner.<program>.init.backup.<timestamp>' before the
+  changed init script is written.
 
 Author:  Madison Kelly (mkelly@alteeve.com)
 Date:    Sep. 21, 2010
