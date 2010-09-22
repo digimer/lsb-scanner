@@ -1,0 +1,31 @@
+LSB Scanner
+- Make LSB header changes persistent across init script updates.
+
+This has two modes of operation; Pre-Scan and Post-Write
+
+In Pre-Scan mode:
+- Read the LSB header of the named init script and records the chkconfig,
+  Required-Start, Should-Start, Required-Stop, Should-Stop, Default-Start,
+  Default-Stop and Default-Enabled. 
+- These will be stored as "variable = value" pairs in the destination
+  directory ('/etc/sysconfig by' default) under the name
+  '<program>.lsb.conf'.
+
+In Post-Write mode:
+- The '<program>.lsb.conf' file will be read into memory.
+- The named '/etc/init.d/<program>' file will be read up to
+  '### END INIT INFO'.
+- The read value will be compared against the stored value, if any. If there
+  is a difference, the LSB line will be updated to match the stored value.
+- The modified init script will be re-written *only* if a value was changed.
+
+Author:  Madison Kelly (mkelly@alteeve.com)
+Date:    Sep. 21, 2010
+License: GPL v2+
+
+
+History:
+
+The lsb-scanner was created as an answer to Red Hat bug #636066
+- https://bugzilla.redhat.com/show_bug.cgi?id=636066
+

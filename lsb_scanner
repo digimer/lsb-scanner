@@ -1,0 +1,389 @@
+#!/usr/bin/bash
+#
+# LSB Scanner
+# - Make LSB header changes persistent across init script updates.
+# 
+# This has two modes of operation; Pre-Scan and Post-Write
+# 
+# In Pre-Scan mode:
+# - Read the LSB header of the named init script and records the chkconfig,
+#   Required-Start, Should-Start, Required-Stop, Should-Stop, Default-Start,
+#   Default-Stop and Default-Enabled. 
+# - These will be stored as "variable = value" pairs in the destination
+#   directory ('/etc/sysconfig by' default) under the name
+#   '<program>.lsb.conf'.
+# 
+# In Post-Write mode:
+# - The '<program>.lsb.conf' file will be read into memory.
+# - The named '/etc/init.d/<program>' file will be read up to
+#   '### END INIT INFO'.
+# - The read value will be compared against the stored value, if any. If there
+#   is a difference, the LSB line will be updated to match the stored value.
+# - The modified init script will be re-written *only* if a value was changed.
+# 
+# Author:  Madison Kelly (mkelly@alteeve.com)
+# Date:    Sep. 21, 2010
+# License: GPL v2+
+# 
+
+# Play safe!
+use strict;
+use warnings;
+use IO::Handle;
+use File::Copy;
+
+# Defaults.
+my $conf={
+	set_next	=>	"",
+	'system'	=>	{
+		'log'		=>	"/tmp/#!prog_name!#.lsb_scanner.log",
+		debug		=>	1,
+		mode		=>	"",
+		program		=>	"",
+	},
+	src	=>	{
+		dir	=>	"/etc/init.d",
+		file	=>	"#!prog_name!#",
+	},
+	dst	=>	{
+		dir	=>	"/etc/sysconfig",
+		file	=>	"#!prog_name!#.lsb.conf",
+	}
+};
+
+# Make sure I am running as root.
+# print "Real UID: [$<], Effective UID: [$>]\n";
+die "The LSB Scanner must be run as root. Exiting.\n" if (($< != 0) && ($> != 0));
+
+# Log file for output.
+my $log=IO::Handle->new();
+open ($log, ">>$conf->{'system'}{'log'}") or die "Failed to open: [$conf->{'system'}{'log'}] for writing; Error: $!\n";
+
+# Set STDOUT and $log to hot (unbuffered) output.
+if (1)
+{
+	select $log;
+	$|=1;
+	select STDOUT;
+	$|=1;
+}
+
+# Read in arguments from the command line.
+if (read_cla($conf, $log))
+{
+	record($conf, $log, __LINE__.": Exiting on errors reading command line argiments!\n");
+	
+}
+
+# This method can't pass in the '$log' handle, obviously, as it does not yet
+# exist.
+read_conf($conf, $log);
+
+
+
+###############################################################################
+# Functions                                                                   #
+###############################################################################
+
+# This returns the 'help' message.
+sub help
+{
+	my ($conf, $log, $error)=@_;
+	$error = 0 if not defined $error;
+	
+	# MADI: Convert this to 'man' formatting and then pipe it through
+	#       man.
+	print `
+NAME
+
+	lsb-scanner
+
+SYNOPSIS
+
+	lsb-scanner -m [pre|post] -p <program>
+
+DESCRIPTION
+
+	In 'pre' mode, reads in the LSB header information from the head of an
+	init script and records it in '/etc/sysconfig/<program>.lsb.conf'.
+	
+	In 'post' mode, it reads in the LSB header information from the
+	'/etc/sysconfig/<program>.lsb.conf' file, if it exists. It then reads
+	in the existing '/etc/init.d/<program>' and compares the LSB header.
+	For each line in the init script, it checks for a differing value in
+	the config file. If one or more differences are found, the init script
+	will be written back out with the new values.
+	
+	When needed, the init script's mode will be set to 'read-write' by the
+	'root' user. The original mode will be restored on exit.
+
+SWITCHES
+
+	-m, --mode
+	
+		This sets the mode. It must be 'pre' or 'post'.
+		
+		'pre' sets the mode to "Pre-Scan" mode. The existing <program>
+		init script will be examined and it's values recorded in the
+		lsb config file. Any existing values in the config file will be
+		overwritten.
+		
+		'post' set the mode to "Post-Write" mode. The config file will
+		be read and compared against the existing init script. If
+		differences are found, the init script will be re-written if
+		changes are made.
+	
+	-p, --program
+	
+		This sets the name of the program being worked on. It must
+		match the name of the init script. If the init script is not
+		found, the program will exit.
+
+EXAMPLES
+
+	lsb_scanner -m pre -p clvmd
+	
+		Read in the '/etc/init.d/clvmd' LSB information and store it in
+		'/etc/sysconfig/clvmd.lsb.conf'.
+	
+	lsb_scanner -m post -p clvmd
+	
+		Read in '/etc/sysconfig/clvmd.lsb.conf' and update the LSB
+		header in '/etc/init.d/clvmd' if necessary.
+
+BUGS
+
+	None known, many expected. Send bugs to 'digimer\@alteeve.com'.
+	`;
+	
+	do_exit($conf, $log, $error);
+}
+
+# Read in command line arguments
+sub read_cla
+{
+	my ($conf, $log)=@_;
+	
+	my $bad = 0;
+	
+	# Loop through the passed arguments, if any.
+	record($conf, $log, __LINE__.": Got args:\n") if $conf->{'system'}{debug};
+	my $set_next="";
+	foreach my $arg (@ARGV)
+	{
+		record($conf, $log, __LINE__, "[$arg]\n") if $conf->{'system'}{debug};
+		
+		my $val="";
+		($arg, $val) = ($arg =~ /-(\w+)=(\w+)/) if $arg=~ /=/;
+		if 
+		
+		if ($arg=~/-h/)
+		{
+			# Print the help message and then exit.
+			help($conf, $log);
+		}
+		elsif (($arg=~/-m/) || ($arg=~/--mode/))
+		{
+			# mode, must be 'pre' or 'post'
+			my $mode=$val ? $val : shift @ARGV;
+			if ((not defined $mode) || ($mode =~ /^-/))
+			{
+				record($conf, $log, __LINE__.": Bad argument! Passed '-m' without a mode. Must be 'pre' or 'post'.\n");
+				$bad = 1;
+			}
+			else if ((lc($mode) ne "pre") && (lc($mode) ne "post"))
+			{
+				record($conf, $log, __LINE__.": Bad mode! Got: [$mode], must be 'pre' or 'post'.\n");
+				$bad = 1;
+			}
+			else
+			{
+				$system->{'system'}{mode} = lc($mode) eq "pre" ? "pre" : "post";
+			}
+		}
+		elsif (($arg=~/-p/) || ($arg=~/--program/))
+		{
+			# program name.
+			my $program=$val ? $val : shift @ARGV;
+			if ((not defined $mode) || ($mode =~ /^-/))
+			{
+				record($conf, $log, __LINE__.": Bad argument! Passed '-p' without a program name.\n");
+				$bad = 1;
+			}
+			else
+			{
+				$system->{'system'}{program} = $program;
+			}
+		}
+		else
+		{
+			### MADI: I might want to pick up arguments via multiple lines.
+			# Bad argument.
+			record($conf, $log, __LINE__, "\nERROR: Argument: [$arg] is not valid!\n");
+			$bad=1;
+		}
+	}
+	return ($bad);
+}
+
+# Read in the config file.
+sub read_conf
+{
+	my ($conf, $log)=@_;
+	$conf={} if not $conf;
+	
+	# I can't call the 'record' method here because I've not read in the
+	# log file and thus don't know where to write the log to yet. Comment
+	# out or delete 'print' statements before release.
+	my $read=IO::Handle->new();
+	my $shell_call="$conf->{'system'}{conf_file}";
+	open ($read, "<$shell_call") or record($conf, $log, __LINE__, "Failed to read: [$shell_call], error was: $!\n", 2);
+	# To see this log message, debug will need to be set true in the
+	# initialization hash.
+	record($conf, $log, __LINE__, "Shell call: [$shell_call]\n") if $conf->{'system'}{debug};
+	while (<$read>)
+	{
+		chomp;
+		my $line=$_;
+		next if not $line;
+		next if $line !~ /=/;
+		$line=~s/^\s+//;
+		$line=~s/\s+$//;
+		next if $line =~ /^#/;
+		next if not $line;
+		my ($var, $val)=(split/=/, $line, 2);
+		$var=~s/^\s+//;
+		$var=~s/\s+$//;
+		$val=~s/^\s+//;
+		$val=~s/\s+$//;
+		next if (not $var);
+		record($conf, $log, __LINE__, "Storing: [$var] = [$val]\n") if $conf->{'system'}{debug};
+		_make_hash_reference($conf, $var, $val);
+	}
+	$read->close();
+	
+	return (0);
+}
+
+# This cleanly exits the agent.
+sub do_exit
+{
+	my ($conf, $log, $exit_status)=@_;
+	$exit_status=9 if not defined $exit_status;
+	
+	# Close the Node Assassin and log file handle, if they exist.
+	$log->close() if $log;
+	
+	exit ($exit_status);
+}
+
+# Read in the config file.
+sub read_conf
+{
+	my ($conf, $log)=@_;
+	$conf={} if not $conf;
+	
+	# I can't call the 'record' method here because I've not read in the
+	# log file and thus don't know where to write the log to yet. Comment
+	# out or delete 'print' statements before release.
+	my $read=IO::Handle->new();
+	my $shell_call="$conf->{'system'}{conf_file}";
+	open ($read, "<$shell_call") or record($conf, $log, __LINE__, "Failed to read: [$shell_call], error was: $!\n", 2);
+	# To see this log message, debug will need to be set true in the
+	# initialization hash.
+	record($conf, $log, __LINE__, "Shell call: [$shell_call]\n") if $conf->{'system'}{debug};
+	while (<$read>)
+	{
+		chomp;
+		my $line=$_;
+		next if not $line;
+		next if $line !~ /=/;
+		$line=~s/^\s+//;
+		$line=~s/\s+$//;
+		next if $line =~ /^#/;
+		next if not $line;
+		my ($var, $val)=(split/=/, $line, 2);
+		$var=~s/^\s+//;
+		$var=~s/\s+$//;
+		$val=~s/^\s+//;
+		$val=~s/\s+$//;
+		next if (not $var);
+		record($conf, $log, __LINE__, "Storing: [$var] = [$val]\n") if $conf->{'system'}{debug};
+		_make_hash_reference($conf, $var, $val);
+	}
+	$read->close();
+	
+	return (0);
+}
+
+# This function simply prints messages to both the log and to stdout.
+sub record
+{
+	my ($conf, $log, $line, $msg, $critical)=@_;
+	$critical=0 if not $critical;
+	
+	# The log file gets everything.
+	print $log $msg;
+	print $msg if not $conf->{'system'}{quiet};
+	
+	# Critical messages have to print, so this ensure that it gets out
+	# when 'quiet' is in use.
+	print $msg if (($critical == 1) && ($conf->{'system'}{quiet}));
+	die "\nERROR: Fatal error at line: [$line]\nERROR: $msg\n" if $critical == 2;
+	
+	return(0);
+}
+
+
+###############################################################################
+# Private functions                                                           #
+###############################################################################
+
+### Contributed by Shaun Fryer and Viktor Pavlenko by way of TPM.
+# This is a helper to the above '_add_href' method. It is called each time a
+# new string is to be created as a new hash key in the passed hash reference.
+sub _add_hash_reference
+{
+	my $href1=shift;
+	my $href2=shift;
+	
+	for my $key (keys %$href2)
+	{
+		if (ref $href1->{$key} eq 'HASH')
+		{
+			_add_hash_reference($href1->{$key}, $href2->{$key});
+		}
+		else
+		{
+			$href1->{$key}=$href2->{$key};
+		}
+	}
+}
+
+### Contributed by Shaun Fryer and Viktor Pavlenko by way of TPM.
+# This takes a string with double-colon seperators and divides on those
+# double-colons to create a hash reference where each element is a hash key.
+sub _make_hash_reference
+{
+	my $href=shift;
+	my $key_string=shift;
+	my $value=shift;
+# 	print "variable: [$key_string], value: [$value]\n";
+	
+	my $chomp_root=0;
+	if ($chomp_root) { $key_string=~s/\w+:://; }
+	
+	my @keys = split /::/, $key_string;
+	my $last_key = pop @keys;
+	my $_href = {};
+	$_href->{$last_key}=$value;
+	while (my $key = pop @keys)
+	{
+		my $elem = {};
+		$elem->{$key} = $_href;
+		$_href = $elem;
+	}
+	_add_hash_reference($href, $_href);
+}
+
+exit 0;
