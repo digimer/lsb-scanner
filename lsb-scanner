@@ -36,7 +36,7 @@ use File::Copy;
 # Defaults.
 my $conf={
 	set_next	=>	"",
-	'log'		=>	"/tmp/lsb_scanner.log",
+	'log'		=>	"/tmp/lsb-scanner.log",
 	debug		=>	0,
 	quiet		=>	0,
 	mode		=>	"",
@@ -94,7 +94,7 @@ elsif (not $conf->{program})
 my $program=$conf->{program};
 $conf->{'log'}=~s/#!prog_name!#/$program/;
 $conf->{init_file}.="/$program";
-$conf->{lsb_conf}.="/lsb_scanner.$program.conf";
+$conf->{lsb_conf}.="/lsb-scanner.$program.conf";
 record($conf, $log, __LINE__, "Log: [$conf->{'log'}], init_file: [$conf->{init_file}], lsb_conf: [$conf->{lsb_conf}]\n") if $conf->{debug};
 
 # Start work.

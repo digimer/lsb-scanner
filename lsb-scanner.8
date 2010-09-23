@@ -123,8 +123,8 @@
 .rm #[ #] #H #V #F C
 .\" ========================================================================
 .\"
-.IX Title "LSB_SCANNER 1"
-.TH LSB_SCANNER 1 "2010-09-22" "perl v5.10.1" "User Contributed Perl Documentation"
+.IX Title "LSB-SCANNER 1"
+.TH LSB-SCANNER 1 "2010-09-22" "perl v5.10.1" "User Contributed Perl Documentation"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -137,15 +137,15 @@
 .SH "DESCRIPTION"
 .IX Header "DESCRIPTION"
 In \f(CW\*(C`pre\*(C'\fR mode, reads in the \s-1LSB\s0 header information from the head of an init
-script and records it in \f(CW\*(C`/etc/sysconfig/lsb_scanner.<program>.conf\*(C'\fR.
+script and records it in \f(CW\*(C`/etc/sysconfig/lsb\-scanner.<program>.conf\*(C'\fR.
 .PP
 In \f(CW\*(C`post\*(C'\fR mode, it reads in the \s-1LSB\s0 header information from the 
-\&\f(CW\*(C`/etc/sysconfig/lsb_scanner.<program>.conf\*(C'\fR file, if it exists. It 
+\&\f(CW\*(C`/etc/sysconfig/lsb\-scanner.<program>.conf\*(C'\fR file, if it exists. It 
 then reads in the existing \f(CW\*(C`/etc/init.d/<program>\*(C'\fR and compares the 
 \&\s-1LSB\s0 header. For each line in the init script, it checks for a differing value
 in the config file. If one or more differences are found, the original init
 script will be backed up as
-\&\f(CW\*(C`/etc/sysconfig/lsb_scanner.<program>.init.backup.<timestamp>\*(C'\fR,
+\&\f(CW\*(C`/etc/sysconfig/lsb\-scanner.<program>.init.backup.<timestamp>\*(C'\fR,
 and then the modified init script will be written out with the new values.
 .PP
 When needed, the init script's \f(CW\*(C`mode\*(C'\fR will be set to 'read\-write' by the
@@ -177,18 +177,18 @@ This sets the name of the program being worked on. It must match the name of
 the init script. If the init script is not found, the program will exit.
 .SH "EXAMPLES"
 .IX Header "EXAMPLES"
-\&\f(CW\*(C`lsb_scanner \-m pre \-p clvmd\*(C'\fR
+\&\f(CW\*(C`lsb\-scanner \-m pre \-p clvmd\*(C'\fR
 .PP
 Read in the \f(CW\*(C`/etc/init.d/clvmd\*(C'\fR \s-1LSB\s0 information and store it in
-\&\f(CW\*(C`/etc/sysconfig/lsb_scanner.clvmd.conf\*(C'\fR.
+\&\f(CW\*(C`/etc/sysconfig/lsb\-scanner.clvmd.conf\*(C'\fR.
 .PP
-\&\fBlsb_scanner \-m post \-p clvmd\fR
+\&\fBlsb-scanner \-m post \-p clvmd\fR
 .PP
-Read in \f(CW\*(C`/etc/sysconfig/lsb_scanner.clvmd.conf\*(C'\fR and update the \s-1LSB\s0 header in 
+Read in \f(CW\*(C`/etc/sysconfig/lsb\-scanner.clvmd.conf\*(C'\fR and update the \s-1LSB\s0 header in 
 \&\f(CW\*(C`/etc/init.d/clvmd\*(C'\fR if necessary.
 .SH "LOGS"
 .IX Header "LOGS"
-The log file \f(CW\*(C`/tmp/lsb_scanner.log\*(C'\fR is created or appended to.
+The log file \f(CW\*(C`/tmp/lsb\-scanner.log\*(C'\fR is created or appended to.
 .SH "BUGS"
 .IX Header "BUGS"
 None known, many expected. Send bugs to digimer@alteeve.com.

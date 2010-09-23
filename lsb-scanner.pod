@@ -13,15 +13,15 @@ B<lsb-scanner -m [pre|post] -p E<lt>programE<gt>>
 =head1 DESCRIPTION
 
 In C<pre> mode, reads in the LSB header information from the head of an init
-script and records it in C</etc/sysconfig/lsb_scanner.E<lt>programE<gt>.conf>.
+script and records it in C</etc/sysconfig/lsb-scanner.E<lt>programE<gt>.conf>.
 	
 In C<post> mode, it reads in the LSB header information from the 
-C</etc/sysconfig/lsb_scanner.E<lt>programE<gt>.conf> file, if it exists. It 
+C</etc/sysconfig/lsb-scanner.E<lt>programE<gt>.conf> file, if it exists. It 
 then reads in the existing C</etc/init.d/E<lt>programE<gt>> and compares the 
 LSB header. For each line in the init script, it checks for a differing value
 in the config file. If one or more differences are found, the original init
 script will be backed up as
-C</etc/sysconfig/lsb_scanner.E<lt>programE<gt>.init.backup.E<lt>timestampE<gt>>,
+C</etc/sysconfig/lsb-scanner.E<lt>programE<gt>.init.backup.E<lt>timestampE<gt>>,
 and then the modified init script will be written out with the new values.
 
 When needed, the init script's C<mode> will be set to 'read-write' by the
@@ -52,19 +52,19 @@ the init script. If the init script is not found, the program will exit.
 
 =head1 EXAMPLES
 
-C<lsb_scanner -m pre -p clvmd>
+C<lsb-scanner -m pre -p clvmd>
 
 Read in the C</etc/init.d/clvmd> LSB information and store it in
-C</etc/sysconfig/lsb_scanner.clvmd.conf>.
+C</etc/sysconfig/lsb-scanner.clvmd.conf>.
 
-B<lsb_scanner -m post -p clvmd>
+B<lsb-scanner -m post -p clvmd>
 
-Read in C</etc/sysconfig/lsb_scanner.clvmd.conf> and update the LSB header in 
+Read in C</etc/sysconfig/lsb-scanner.clvmd.conf> and update the LSB header in 
 C</etc/init.d/clvmd> if necessary.
 
 =head1 LOGS
 
-The log file C</tmp/lsb_scanner.log> is created or appended to.
+The log file C</tmp/lsb-scanner.log> is created or appended to.
 
 =head1 BUGS
 
@@ -87,3 +87,4 @@ L<http://wiki.alteeve.com/index.php/lsb-scanner>
 This program is free software; you can redistribute it and/or modify it under the terms of the GPL v2 or higher.
 
 =cut
+
