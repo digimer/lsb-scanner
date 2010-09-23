@@ -21,6 +21,10 @@
 #   is a difference, the LSB line will be updated to match the stored value.
 # - The modified init script will be re-written *only* if a value was changed.
 # 
+# To Do:
+# - The logging is useless right now as I've put the debug check outside of the
+#   record() function. Change this to a critical level check.
+# 
 # Author:  Madison Kelly (mkelly@alteeve.com)
 # Date:    Sep. 21, 2010
 # License: GPL v2+
@@ -63,6 +67,7 @@ die "The LSB Scanner must be run as root. Exiting.\n" if (($< != 0) && ($> != 0)
 # Log file for output.
 my $log=IO::Handle->new();
 open ($log, ">>$conf->{'log'}") or die "Failed to open: [$conf->{'log'}] for writing; Error: $!\n";
+print $log "LSB Scanner starting at unix time: [".time."]\n";
 
 # Set STDOUT and $log to hot (unbuffered) output.
 if (1)
@@ -98,12 +103,15 @@ $conf->{lsb_conf}.="/lsb-scanner.$program.conf";
 record($conf, $log, __LINE__, "Log: [$conf->{'log'}], init_file: [$conf->{init_file}], lsb_conf: [$conf->{lsb_conf}]\n") if $conf->{debug};
 
 # Start work.
+record($conf, $log, __LINE__, "Running in mode: [$conf->{mode}] for program: [$conf->{program}]\n") if $conf->{debug};
 if ($conf->{mode} eq "pre")
 {
-	# Read in the init script.
-	read_init_lsb($conf, $log);
-	# Write out what I read to the LSB config file.
-	write_lsb_conf($conf, $log);
+	# Read in the init script. read_init_lsb() returns >0 on success.
+	if (read_init_lsb($conf, $log))
+	{
+		# Write out what I read to the LSB config file.
+		write_lsb_conf($conf, $log);
+	}
 }
 elsif ($conf->{mode} eq "post")
 {
@@ -118,13 +126,9 @@ else
 {
 	record($conf, $log, __LINE__, "Invalid mode! This should have been caught earlier and is likely the sign of a program error.\n", 2);
 }
-
-# This method can't pass in the '$log' handle, obviously, as it does not yet
-# exist.
-# read_conf($conf, $log);
-
-
+record($conf, $log, __LINE__, " - LSB Scanner complete.\n") if $conf->{debug};
 do_exit($conf, $log, 0);
+
 
 ###############################################################################
 # Functions                                                                   #
@@ -233,6 +237,7 @@ sub write_init_lsb
 		$backup.=time;
 		
 		my $bk=IO::Handle->new();
+		record($conf, $log, __LINE__, "Opening: [$backup] for writing.\n") if $conf->{debug};
 		open ($bk, ">$backup") or die "Failed to open: [$backup] for writing; Error: $!\n";
 		foreach my $line (@orig)
 		{
@@ -242,6 +247,7 @@ sub write_init_lsb
 		
 		# Now write out the modified copy.
 		my $init=IO::Handle->new();
+		record($conf, $log, __LINE__, "Opening: [$conf->{init_file}] for writing.\n") if $conf->{debug};
 		open ($init, ">$conf->{init_file}") or die "Failed to open: [$conf->{init_file}] for writing; Error: $!\n";
 		foreach my $line (@new)
 		{
@@ -304,6 +310,7 @@ sub write_lsb_conf
 	my ($conf, $log)=@_;
 	
 	my $lsb=IO::Handle->new();
+	record($conf, $log, __LINE__, "Opening: [$conf->{lsb_conf}] for writing.\n") if $conf->{debug};
 	open ($lsb, ">$conf->{lsb_conf}") or die "Failed to open: [$conf->{lsb_conf}] for writing; Error: $!\n";
 	
 	foreach my $key (sort {$a cmp $b} keys %{$conf->{from_conf}})
@@ -322,11 +329,13 @@ sub read_init_lsb
 	
 	if (not -f $conf->{init_file})
 	{
-		record($conf, $log, "Unable to find the source file: [$conf->{init_file}].\n", 2);
+		# This is not a problem as it will happen on new installs.
+		record($conf, $log, __LINE__, "Unable to find the source file: [$conf->{init_file}].\n") if $conf->{debug};
+		return 0;
 	}
 	elsif (not -r $conf->{init_file})
 	{
-		record($conf, $log, "Unable to read the source file: [$conf->{init_file}], error was: $!\n", 2);
+		record($conf, $log, __LINE__, "Unable to read the source file: [$conf->{init_file}], error was: $!\n", 2);
 	}
 	
 	my $read=IO::Handle->new();
@@ -361,7 +370,7 @@ sub read_init_lsb
 	}
 	$read->close();
 	
-	return (0);
+	return (1);
 }
 
 # This returns the 'help' message.
@@ -482,6 +491,7 @@ sub do_exit
 sub record
 {
 	my ($conf, $log, $line, $msg, $critical)=@_;
+	$msg="--" if not defined $msg;
 	$critical=0 if not $critical;
 	
 	# The log file gets everything.
